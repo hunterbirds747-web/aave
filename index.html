@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aave 地址理财收益</title>
+<style>
+  :root {
+    --bg: #f4f5f9; --card: #ffffff; --text: #1b1d2a; --muted: #6b7083; --line: #e6e8f0;
+    --accent: #7a5cf0; --accent-soft: #efeaff; --pos: #12805c; --neg: #c2392f; --warn: #a15c00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101119; --card: #1a1c28; --text: #eceef6; --muted: #9297ab; --line: #2a2d3d;
+      --accent: #a48cff; --accent-soft: #262040; --pos: #4fd1a1; --neg: #ff8076; --warn: #f0b45a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px; background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  .widget {
+    max-width: 560px; margin: 0 auto; background: var(--card); border: 1px solid var(--line);
+    border-radius: 16px; padding: 20px; box-shadow: 0 6px 24px rgba(0, 0, 0, .06);
+  }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 14px; }
+  h1 { font-size: 16px; margin: 0; }
+  .status { font-size: 12px; color: var(--muted); text-align: right; }
+  form { display: flex; gap: 8px; flex-wrap: wrap; }
+  input, select, button {
+    font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line);
+    border-radius: 10px; padding: 9px 12px; min-width: 0;
+  }
+  input { flex: 1 1 220px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .6; cursor: default; }
+  .msg { margin-top: 14px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); color: var(--muted); }
+  .msg.error { color: var(--neg); }
+  .hero { margin-top: 18px; padding: 16px; border-radius: 12px; background: var(--accent-soft); }
+  .hero .label { font-size: 12px; color: var(--muted); }
+  .hero .live { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+  .hero .sub { font-size: 12px; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+  .stat { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+  .stat .label { font-size: 12px; color: var(--muted); }
+  .stat .value { font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .pos { color: var(--pos); } .neg { color: var(--neg); } .warn { color: var(--warn); }
+  h2 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 18px 0 6px; }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: 8px 6px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-size: 12px; font-weight: 500; color: var(--muted); }
+  th:first-child, td:first-child { text-align: left; font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  td small { display: block; color: var(--muted); font-weight: 400; }
+  footer { margin-top: 14px; font-size: 11px; color: var(--muted); }
+  [hidden] { display: none !important; }
+  @media (max-width: 420px) { .grid { grid-template-columns: repeat(2, 1fr); } .hero .live { font-size: 24px; } }
+</style>
+</head>
+<body>
+<main class="widget">
+  <header>
+    <h1>Aave 地址理财收益</h1>
+    <div class="status" id="status"></div>
+  </header>
+
+  <form id="form">
+    <input id="address" placeholder="输入钱包地址 0x… 或 ENS 域名" autocomplete="off" spellcheck="false" aria-label="钱包地址">
+    <select id="chain" aria-label="网络"></select>
+    <button id="submit" type="submit">查询</button>
+  </form>
+
+  <div class="msg" id="msg">输入地址后查看其在 Aave V3 的存款、借款与预估收益。</div>
+
+  <section id="result" hidden>
+    <div class="hero">
+      <div class="label">打开页面以来的预估净收益</div>
+      <div class="live" id="live">$0.000000</div>
+      <div class="sub" id="liveSub"></div>
+    </div>
+
+    <div class="grid">
+      <div class="stat"><div class="label">日收益</div><div class="value" id="daily"></div></div>
+      <div class="stat"><div class="label">月收益</div><div class="value" id="monthly"></div></div>
+      <div class="stat"><div class="label">年收益</div><div class="value" id="yearly"></div></div>
+      <div class="stat"><div class="label">净资产</div><div class="value" id="net"></div></div>
+      <div class="stat"><div class="label">净年化 APY</div><div class="value" id="netApy"></div></div>
+      <div class="stat"><div class="label">健康系数</div><div class="value" id="hf"></div></div>
+    </div>
+
+    <div id="supplyBox">
+      <h2>存款 <span id="supplyTotal"></span></h2>
+      <div class="scroll"><table>
+        <thead><tr><th>资产</th><th>余额</th><th>存款 APY</th><th>日收益</th></tr></thead>
+        <tbody id="supplyRows"></tbody>
+      </table></div>
+    </div>
+
+    <div id="borrowBox">
+      <h2>借款 <span id="borrowTotal"></span></h2>
+      <div class="scroll"><table>
+        <thead><tr><th>资产</th><th>债务</th><th>借款 APY</th><th>日利息</th></tr></thead>
+        <tbody id="borrowRows"></tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <footer>
+    数据直接读取 Aave V3 链上合约，每 60 秒刷新。收益按当前浮动利率估算，不含激励奖励，利率变化后实际收益会不同；仅供参考，不构成投资建议。
+  </footer>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.5/ethers.umd.min.js"></script>
+<script>
+(() => {
+  'use strict';
+
+  // 每条链只需要 PoolAddressesProvider，其余合约地址从链上读取。
+  const CHAINS = {
+    ethereum:  { name: 'Ethereum',  id: 1,     rpc: 'https://ethereum-rpc.publicnode.com',         provider: '0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e' },
+    arbitrum:  { name: 'Arbitrum',  id: 42161, rpc: 'https://arbitrum-one-rpc.publicnode.com',     provider: '0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb' },
+    base:      { name: 'Base',      id: 8453,  rpc: 'https://base-rpc.publicnode.com',             provider: '0xe20fCBdBfFC4Dd138cE8b2E6FBb6CB49777ad64D' },
+    optimism:  { name: 'Optimism',  id: 10,    rpc: 'https://optimism-rpc.publicnode.com',         provider: '0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb' },
+    polygon:   { name: 'Polygon',   id: 137,   rpc: 'https://polygon-bor-rpc.publicnode.com',      provider: '0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb' },
+    avalanche: { name: 'Avalanche', id: 43114, rpc: 'https://avalanche-c-chain-rpc.publicnode.com', provider: '0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb' },
+  };
+  const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11';
+  const SECONDS_PER_YEAR = 31536000;
+  const REFRESH_MS = 60000;
+
+  const abi = {
+    addressesProvider: new ethers.Interface([
+      'function getPool() view returns (address)',
+      'function getPoolDataProvider() view returns (address)',
+      'function getPriceOracle() view returns (address)',
+    ]),
+    dataProvider: new ethers.Interface([
+      'function getAllReservesTokens() view returns ((string symbol, address token)[])',
+      'function getUserReserveData(address asset, address user) view returns (uint256 currentATokenBalance, uint256 currentStableDebt, uint256 currentVariableDebt, uint256 principalStableDebt, uint256 scaledVariableDebt, uint256 stableBorrowRate, uint256 liquidityRate, uint40 stableRateLastUpdated, bool usageAsCollateralEnabled)',
+      'function getReserveData(address asset) view returns (uint256 unbacked, uint256 accruedToTreasuryScaled, uint256 totalAToken, uint256 totalStableDebt, uint256 totalVariableDebt, uint256 liquidityRate, uint256 variableBorrowRate, uint256 stableBorrowRate, uint256 averageStableBorrowRate, uint256 liquidityIndex, uint256 variableBorrowIndex, uint40 lastUpdateTimestamp)',
+      'function getReserveConfigurationData(address asset) view returns (uint256 decimals, uint256 ltv, uint256 liquidationThreshold, uint256 liquidationBonus, uint256 reserveFactor, bool usageAsCollateralEnabled, bool borrowingEnabled, bool stableBorrowRateEnabled, bool isActive, bool isFrozen)',
+    ]),
+    oracle: new ethers.Interface([
+      'function getAssetsPrices(address[] assets) view returns (uint256[])',
+      'function BASE_CURRENCY_UNIT() view returns (uint256)',
+    ]),
+    pool: new ethers.Interface([
+      'function getUserAccountData(address user) view returns (uint256 totalCollateralBase, uint256 totalDebtBase, uint256 availableBorrowsBase, uint256 currentLiquidationThreshold, uint256 ltv, uint256 healthFactor)',
+    ]),
+    multicall: [
+      'function aggregate3((address target, bool allowFailure, bytes callData)[] calls) view returns ((bool success, bytes returnData)[])',
+    ],
+  };
+
+  const providers = {};
+  const getProvider = (key) => providers[key] ??= new ethers.JsonRpcProvider(
+    CHAINS[key].rpc, CHAINS[key].id, { staticNetwork: true });
+
+  // 一次 RPC 请求批量执行多个只读调用；单个调用失败时返回 null。
+  async function multicall(chainKey, calls) {
+    const mc = new ethers.Contract(MULTICALL3, abi.multicall, getProvider(chainKey));
+    const res = await mc.aggregate3.staticCall(
+      calls.map(c => ({ target: c.target, allowFailure: true, callData: c.iface.encodeFunctionData(c.fn, c.args ?? []) })));
+    return res.map((r, i) => {
+      if (!r.success || r.returnData === '0x') return null;
+      try { return calls[i].iface.decodeFunctionResult(calls[i].fn, r.returnData); } catch { return null; }
+    });
+  }
+
+  const metaCache = {};
+  async function getMeta(chainKey) {
+    if (metaCache[chainKey]) return metaCache[chainKey];
+    const ap = CHAINS[chainKey].provider;
+    const [pool, dp, oracle] = await multicall(chainKey, [
+      { target: ap, iface: abi.addressesProvider, fn: 'getPool' },
+      { target: ap, iface: abi.addressesProvider, fn: 'getPoolDataProvider' },
+      { target: ap, iface: abi.addressesProvider, fn: 'getPriceOracle' },
+    ]);
+    if (!pool || !dp || !oracle) throw new Error('无法读取该网络的 Aave 合约地址');
+    const [tokens, unit] = await multicall(chainKey, [
+      { target: dp[0], iface: abi.dataProvider, fn: 'getAllReservesTokens' },
+      { target: oracle[0], iface: abi.oracle, fn: 'BASE_CURRENCY_UNIT' },
+    ]);
+    if (!tokens || !unit) throw new Error('无法读取该网络的资产列表');
+    return metaCache[chainKey] = {
+      pool: pool[0], dataProvider: dp[0], oracle: oracle[0],
+      baseUnit: Number(unit[0]),
+      reserves: tokens[0].map(t => ({ symbol: t.symbol, address: t.token })),
+    };
+  }
+
+  const rayToApr = (ray) => Number(ray) / 1e27;
+  const aprToApy = (apr) => Math.pow(1 + apr / SECONDS_PER_YEAR, SECONDS_PER_YEAR) - 1;
+
+  async function fetchPositions(chainKey, user) {
+    const meta = await getMeta(chainKey);
+    const { reserves, dataProvider: dp } = meta;
+
+    const stage1 = await multicall(chainKey, [
+      { target: meta.pool, iface: abi.pool, fn: 'getUserAccountData', args: [user] },
+      ...reserves.map(r => ({ target: dp, iface: abi.dataProvider, fn: 'getUserReserveData', args: [r.address, user] })),
+    ]);
+    const account = stage1[0];
+    const held = [];
+    reserves.forEach((r, i) => {
+      const d = stage1[i + 1];
+      if (d && (d.currentATokenBalance > 0n || d.currentVariableDebt > 0n || d.currentStableDebt > 0n)) held.push({ ...r, user: d });
+    });
+
+    const supplies = [], borrows = [];
+    if (held.length) {
+      const stage2 = await multicall(chainKey, [
+        { target: meta.oracle, iface: abi.oracle, fn: 'getAssetsPrices', args: [held.map(h => h.address)] },
+        ...held.flatMap(h => [
+          { target: dp, iface: abi.dataProvider, fn: 'getReserveConfigurationData', args: [h.address] },
+          { target: dp, iface: abi.dataProvider, fn: 'getReserveData', args: [h.address] },
+        ]),
+      ]);
+      if (!stage2[0]) throw new Error('无法读取资产价格');
+      held.forEach((h, i) => {
+        const cfg = stage2[1 + i * 2], rd = stage2[2 + i * 2];
+        if (!cfg) return;
+        const decimals = Number(cfg.decimals);
+        const price = Number(stage2[0][0][i]) / meta.baseUnit;
+        const amount = (v) => Number(ethers.formatUnits(v, decimals));
+        const row = (amt, apr) => {
+          const apy = aprToApy(apr), usd = amt * price;
+          return { symbol: h.symbol, amount: amt, usd, apy, yearlyUsd: usd * apy };
+        };
+        if (h.user.currentATokenBalance > 0n) {
+          supplies.push(row(amount(h.user.currentATokenBalance), rayToApr(h.user.liquidityRate)));
+        }
+        if (h.user.currentVariableDebt > 0n) {
+          borrows.push(row(amount(h.user.currentVariableDebt), rd ? rayToApr(rd.variableBorrowRate) : 0));
+        }
+        if (h.user.currentStableDebt > 0n) {
+          borrows.push({ ...row(amount(h.user.currentStableDebt), rayToApr(h.user.stableBorrowRate)), symbol: h.symbol + '（固定）' });
+        }
+      });
+    }
+    // 隐藏不足 1 美分的粉尘仓位
+    const tidy = (rows) => rows.filter(r => r.usd >= 0.01).sort((a, b) => b.usd - a.usd);
+    supplies.splice(0, Infinity, ...tidy(supplies));
+    borrows.splice(0, Infinity, ...tidy(borrows));
+
+    const sum = (rows, k) => rows.reduce((s, r) => s + r[k], 0);
+    const supplyUsd = sum(supplies, 'usd'), borrowUsd = sum(borrows, 'usd');
+    const yearlyUsd = sum(supplies, 'yearlyUsd') - sum(borrows, 'yearlyUsd');
+    const netUsd = supplyUsd - borrowUsd;
+    return {
+      supplies, borrows, supplyUsd, borrowUsd, netUsd, yearlyUsd,
+      netApy: netUsd > 0 ? yearlyUsd / netUsd : null,
+      healthFactor: account && borrowUsd > 0 ? Number(ethers.formatUnits(account.healthFactor, 18)) : null,
+    };
+  }
+
+  async function resolveAddress(input) {
+    const v = input.trim();
+    if (ethers.isAddress(v)) return ethers.getAddress(v.toLowerCase());
+    if (/^[^\s]+\.[^\s.]+$/.test(v)) {
+      const addr = await getProvider('ethereum').resolveName(v);
+      if (addr) return addr;
+      throw new Error('未找到该 ENS 域名对应的地址');
+    }
+    throw new Error('请输入有效的钱包地址或 ENS 域名');
+  }
+
+  // ---------- 界面 ----------
+  const $ = (id) => document.getElementById(id);
+  const usd = (v, digits = 2) => (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  const signedUsd = (v, digits = 2) => (v > 0 ? '+' : '') + usd(v, digits);
+  const pct = (v) => (v * 100).toFixed(2) + '%';
+  const qty = (v) => v.toLocaleString('en-US', { maximumFractionDigits: v >= 1000 ? 2 : v >= 1 ? 4 : 6 });
+  const short = (a) => a.slice(0, 6) + '…' + a.slice(-4);
+  const tone = (el, v) => { el.classList.toggle('pos', v > 0); el.classList.toggle('neg', v < 0); };
+
+  const state = { address: null, chain: 'ethereum', data: null, since: 0, accrued: 0, lastTick: 0, timer: null, seq: 0 };
+
+  function setMsg(text, isError) {
+    $('msg').textContent = text || '';
+    $('msg').hidden = !text;
+    $('msg').classList.toggle('error', !!isError);
+  }
+
+  function fillRows(tbody, rows, sign) {
+    tbody.replaceChildren(...rows.map(r => {
+      const tr = document.createElement('tr');
+      const cells = [
+        [r.symbol],
+        [qty(r.amount), usd(r.usd)],
+        [pct(r.apy)],
+        [signedUsd(sign * r.yearlyUsd / 365, 4)],
+      ];
+      cells.forEach(([main, sub], i) => {
+        const td = document.createElement('td');
+        td.textContent = main;
+        if (sub) { const s = document.createElement('small'); s.textContent = sub; td.append(s); }
+        if (i === 3) td.className = sign > 0 ? 'pos' : 'neg';
+        tr.append(td);
+      });
+      return tr;
+    }));
+  }
+
+  function render() {
+    const d = state.data;
+    const empty = !d.supplies.length && !d.borrows.length;
+    $('result').hidden = empty;
+    if (empty) { setMsg(`${short(state.address)} 在 ${CHAINS[state.chain].name} 的 Aave V3 上没有持仓，可以切换网络试试。`); return; }
+    setMsg('');
+
+    const set = (id, v, digits) => { $(id).textContent = signedUsd(v, digits); tone($(id), v); };
+    set('daily', d.yearlyUsd / 365, 2);
+    set('monthly', d.yearlyUsd / 12, 2);
+    set('yearly', d.yearlyUsd, 2);
+    $('net').textContent = usd(d.netUsd);
+    $('netApy').textContent = d.netApy == null ? '—' : pct(d.netApy);
+    tone($('netApy'), d.netApy ?? 0);
+
+    const hf = d.healthFactor, hfEl = $('hf');
+    hfEl.textContent = hf == null ? '—' : hf > 100 ? '>100' : hf.toFixed(2);
+    hfEl.className = 'value' + (hf == null ? '' : hf < 1.1 ? ' neg' : hf < 1.5 ? ' warn' : ' pos');
+
+    $('supplyBox').hidden = !d.supplies.length;
+    $('borrowBox').hidden = !d.borrows.length;
+    $('supplyTotal').textContent = usd(d.supplyUsd);
+    $('borrowTotal').textContent = usd(d.borrowUsd);
+    fillRows($('supplyRows'), d.supplies, 1);
+    fillRows($('borrowRows'), d.borrows, -1);
+    $('liveSub').textContent = `${short(state.address)} · ${CHAINS[state.chain].name} · 每秒 ${signedUsd(d.yearlyUsd / SECONDS_PER_YEAR, 8)}`;
+    tick();
+  }
+
+  // 实时累计：按当前净收益速率逐帧累加。
+  function tick() {
+    const now = performance.now();
+    if (state.data && state.lastTick) state.accrued += state.data.yearlyUsd / SECONDS_PER_YEAR * (now - state.lastTick) / 1000;
+    state.lastTick = now;
+    $('live').textContent = signedUsd(state.accrued, 6);
+    tone($('live'), state.accrued);
+  }
+  setInterval(() => { if (state.data && !$('result').hidden) tick(); }, 100);
+
+  async function load(isRefresh) {
+    const seq = ++state.seq;
+    $('submit').disabled = true;
+    $('status').textContent = '加载中…';
+    if (!isRefresh) setMsg('正在读取链上数据…');
+    try {
+      const data = await fetchPositions(state.chain, state.address);
+      if (seq !== state.seq) return;
+      tick();
+      state.data = data;
+      render();
+      $('status').textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    } catch (err) {
+      if (seq !== state.seq) return;
+      console.error(err);
+      $('status').textContent = isRefresh ? '刷新失败，稍后重试' : '';
+      if (!isRefresh) { $('result').hidden = true; setMsg('查询失败：' + (err.shortMessage || err.message || '网络错误'), true); }
+    } finally {
+      if (seq === state.seq) $('submit').disabled = false;
+    }
+  }
+
+  async function start(input, chainKey) {
+    clearInterval(state.timer);
+    state.seq++;
+    $('result').hidden = true;
+    $('status').textContent = '';
+    setMsg('正在解析地址…');
+    let address;
+    try { address = await resolveAddress(input); }
+    catch (err) { setMsg(err.shortMessage || err.message, true); return; }
+
+    Object.assign(state, { address, chain: chainKey, data: null, accrued: 0, lastTick: 0 });
+    const url = new URL(location.href);
+    url.searchParams.set('address', input.trim());
+    url.searchParams.set('chain', chainKey);
+    history.replaceState(null, '', url);
+
+    await load(false);
+    state.timer = setInterval(() => { if (!document.hidden) load(true); }, REFRESH_MS);
+  }
+
+  // ---------- 初始化 ----------
+  for (const [key, c] of Object.entries(CHAINS)) $('chain').add(new Option(c.name, key));
+  const params = new URLSearchParams(location.search);
+  if (CHAINS[params.get('chain')]) $('chain').value = params.get('chain');
+  if (params.get('address')) $('address').value = params.get('address');
+
+  $('form').addEventListener('submit', (e) => { e.preventDefault(); start($('address').value, $('chain').value); });
+  $('chain').addEventListener('change', () => { if ($('address').value.trim()) start($('address').value, $('chain').value); });
+  if ($('address').value) start($('address').value, $('chain').value);
+
+  window.__aaveWidget = { fetchPositions, CHAINS };
+})();
+</script>
+</body>
+</html>
