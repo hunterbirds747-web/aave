@@ -2,7 +2,16 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Aave 收益">
+<meta name="theme-color" content="#f4f5f9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101119" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
 <title>Aave 地址理财收益</title>
 <style>
   :root {
@@ -17,7 +26,10 @@
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; padding: 24px 16px; background: var(--bg); color: var(--text);
+    margin: 0; background: var(--bg); color: var(--text);
+    padding: calc(24px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
+             calc(24px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+    -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent;
     font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   }
   .widget {
@@ -32,7 +44,8 @@
     font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line);
     border-radius: 10px; padding: 9px 12px; min-width: 0;
   }
-  input { flex: 1 1 220px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  input, select { font-size: 16px; }
+  input { flex: 1 1 220px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   button { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
   button:disabled { opacity: .6; cursor: default; }
@@ -40,7 +53,12 @@
   .msg.error { color: var(--neg); }
   .hero { margin-top: 18px; padding: 16px; border-radius: 12px; background: var(--accent-soft); }
   .hero .label { font-size: 12px; color: var(--muted); }
-  .hero .live { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+  .hero .live {
+    font-size: clamp(20px, 6.4vw, 30px); font-weight: 700; font-variant-numeric: tabular-nums;
+    letter-spacing: -.01em; white-space: nowrap; overflow: hidden; line-height: 1.25;
+  }
+  .hero .live.big { font-size: clamp(26px, 8.6vw, 40px); margin-bottom: 10px; }
+  .hero .live span { display: inline-block; }
   .hero .sub { font-size: 12px; color: var(--muted); }
   .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
   .stat { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-width: 0; }
@@ -57,7 +75,7 @@
   td small { display: block; color: var(--muted); font-weight: 400; }
   footer { margin-top: 14px; font-size: 11px; color: var(--muted); }
   [hidden] { display: none !important; }
-  @media (max-width: 420px) { .grid { grid-template-columns: repeat(2, 1fr); } .hero .live { font-size: 24px; } }
+  @media (max-width: 420px) { .grid { grid-template-columns: repeat(2, 1fr); } }
 </style>
 </head>
 <body>
@@ -77,8 +95,10 @@
 
   <section id="result" hidden>
     <div class="hero">
-      <div class="label">打开页面以来的预估净收益</div>
-      <div class="live" id="live">$0.000000</div>
+      <div class="label">总资产（存款 − 借款）</div>
+      <div class="live big" id="total"></div>
+      <div class="label">打开页面以来的收益</div>
+      <div class="live" id="live"></div>
       <div class="sub" id="liveSub"></div>
     </div>
 
@@ -86,7 +106,7 @@
       <div class="stat"><div class="label">日收益</div><div class="value" id="daily"></div></div>
       <div class="stat"><div class="label">月收益</div><div class="value" id="monthly"></div></div>
       <div class="stat"><div class="label">年收益</div><div class="value" id="yearly"></div></div>
-      <div class="stat"><div class="label">净资产</div><div class="value" id="net"></div></div>
+      <div class="stat"><div class="label">每秒收益</div><div class="value" id="perSec"></div></div>
       <div class="stat"><div class="label">净年化 APY</div><div class="value" id="netApy"></div></div>
       <div class="stat"><div class="label">健康系数</div><div class="value" id="hf"></div></div>
     </div>
@@ -277,7 +297,24 @@
   const short = (a) => a.slice(0, 6) + '…' + a.slice(-4);
   const tone = (el, v) => { el.classList.toggle('pos', v > 0); el.classList.toggle('neg', v < 0); };
 
-  const state = { address: null, chain: 'ethereum', data: null, since: 0, accrued: 0, lastTick: 0, timer: null, seq: 0 };
+  const state = { address: null, chain: 'ethereum', data: null, dataAt: 0, accrued: 0, lastTick: 0, timer: null, seq: 0 };
+
+  // 数字滚动：逐位比较，只让发生变化的数字跳动。
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function roll(el, text) {
+    if (el.childElementCount !== text.length) {
+      el.replaceChildren(...[...text].map(ch => { const s = document.createElement('span'); s.textContent = ch; return s; }));
+      return;
+    }
+    for (let i = 0; i < text.length; i++) {
+      const s = el.children[i];
+      if (s.textContent === text[i]) continue;
+      s.textContent = text[i];
+      if (!reducedMotion && s.animate) {
+        s.animate([{ transform: 'translateY(35%)', opacity: .55 }, { transform: 'none', opacity: 1 }], { duration: 110, easing: 'ease-out' });
+      }
+    }
+  }
 
   function setMsg(text, isError) {
     $('msg').textContent = text || '';
@@ -316,7 +353,7 @@
     set('daily', d.yearlyUsd / 365, 2);
     set('monthly', d.yearlyUsd / 12, 2);
     set('yearly', d.yearlyUsd, 2);
-    $('net').textContent = usd(d.netUsd);
+    set('perSec', d.yearlyUsd / SECONDS_PER_YEAR, 6);
     $('netApy').textContent = d.netApy == null ? '—' : pct(d.netApy);
     tone($('netApy'), d.netApy ?? 0);
 
@@ -330,19 +367,21 @@
     $('borrowTotal').textContent = usd(d.borrowUsd);
     fillRows($('supplyRows'), d.supplies, 1);
     fillRows($('borrowRows'), d.borrows, -1);
-    $('liveSub').textContent = `${short(state.address)} · ${CHAINS[state.chain].name} · 每秒 ${signedUsd(d.yearlyUsd / SECONDS_PER_YEAR, 8)}`;
+    $('liveSub').textContent = `${short(state.address)} · ${CHAINS[state.chain].name}`;
     tick();
   }
 
-  // 实时累计：按当前净收益速率逐帧累加。
+  // 实时跳动：按当前净收益速率推算每一刻的总资产和累计收益，链上数据刷新后重新校准。
   function tick() {
     const now = performance.now();
-    if (state.data && state.lastTick) state.accrued += state.data.yearlyUsd / SECONDS_PER_YEAR * (now - state.lastTick) / 1000;
+    const perSec = state.data ? state.data.yearlyUsd / SECONDS_PER_YEAR : 0;
+    if (state.data && state.lastTick) state.accrued += perSec * (now - state.lastTick) / 1000;
     state.lastTick = now;
-    $('live').textContent = signedUsd(state.accrued, 6);
+    roll($('live'), signedUsd(state.accrued, 6));
     tone($('live'), state.accrued);
+    if (state.data) roll($('total'), usd(state.data.netUsd + perSec * (now - state.dataAt) / 1000, 6));
   }
-  setInterval(() => { if (state.data && !$('result').hidden) tick(); }, 100);
+  setInterval(() => { if (state.data && !$('result').hidden) tick(); }, 120);
 
   async function load(isRefresh) {
     const seq = ++state.seq;
@@ -354,6 +393,7 @@
       if (seq !== state.seq) return;
       tick();
       state.data = data;
+      state.dataAt = performance.now();
       render();
       $('status').textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN', { hour12: false });
     } catch (err) {
@@ -381,6 +421,8 @@
     url.searchParams.set('address', input.trim());
     url.searchParams.set('chain', chainKey);
     history.replaceState(null, '', url);
+    // 记住上次查询，从主屏幕打开时直接显示。
+    try { localStorage.setItem('aave-widget', JSON.stringify({ address: input.trim(), chain: chainKey })); } catch {}
 
     await load(false);
     state.timer = setInterval(() => { if (!document.hidden) load(true); }, REFRESH_MS);
@@ -389,8 +431,14 @@
   // ---------- 初始化 ----------
   for (const [key, c] of Object.entries(CHAINS)) $('chain').add(new Option(c.name, key));
   const params = new URLSearchParams(location.search);
-  if (CHAINS[params.get('chain')]) $('chain').value = params.get('chain');
-  if (params.get('address')) $('address').value = params.get('address');
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem('aave-widget')) || {}; } catch {}
+  const initAddress = params.get('address') || saved.address;
+  const initChain = params.get('address') ? params.get('chain') : saved.chain;
+  if (CHAINS[initChain]) $('chain').value = initChain;
+  if (initAddress) $('address').value = initAddress;
+  // 回到前台时立即刷新，避免显示过期数据。
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && state.data) load(true); });
 
   $('form').addEventListener('submit', (e) => { e.preventDefault(); start($('address').value, $('chain').value); });
   $('chain').addEventListener('change', () => { if ($('address').value.trim()) start($('address').value, $('chain').value); });
