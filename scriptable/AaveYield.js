@@ -10,7 +10,7 @@
 //    网络可选：ethereum / arbitrum / base / optimism / polygon / avalanche
 // 3. 桌面添加 Scriptable 小组件并选择本脚本（支持小 / 中 / 大号和锁屏组件）
 
-const ADDRESS = '';            // 例如 '0x1234…'，留空则使用小组件 Parameter
+const ADDRESS = '0x0Ca6982c030B015b5e2B3417e473F5E26a053453';  // 默认地址；小组件 Parameter 里填了地址则以 Parameter 为准
 const CHAIN = 'ethereum';      // 默认网络
 const REFRESH_MINUTES = 5;     // 期望刷新间隔，实际由 iOS 决定
 const OPEN_URL = '';           // 可选：点击小组件打开的网址，例如你部署的网页版
